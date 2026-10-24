@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.vectorstores import InMemoryVectorStore  # <--- Make sure this line exists
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -25,9 +25,10 @@ Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB."""
 @st.cache_resource
 def get_models():
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
-    # Updated embedding model target
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     return llm, embeddings
+
+llm, embeddings = get_models()
 
 # 4. Process Knowledge Base & Create Vector Store
 if knowledge_text:

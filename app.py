@@ -25,7 +25,8 @@ Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB."""
 @st.cache_resource
 def get_models():
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    # Updated embedding model string
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     return llm, embeddings
 
 llm, embeddings = get_models()

@@ -21,12 +21,13 @@ Target Launch Date: November 15, 2026
 Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB."""
 )
 
-# 3. Initialize Models securely for google-genai v2
+
+# 3. Initialize Models
 @st.cache_resource
 def get_models():
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
-    # Using the standard text-embedding-004 identifier compatible with current SDK
-    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
+    # Updated to the current standard embedding model
+    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
     return llm, embeddings
 
 llm, embeddings = get_models()

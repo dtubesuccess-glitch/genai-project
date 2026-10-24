@@ -21,22 +21,26 @@ Target Launch Date: November 15, 2026
 Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB."""
 )
 
-# 3. Initialize Models
+# 3. Initialize Models securely for google-genai v2
 @st.cache_resource
 def get_models():
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    # Using the standard text-embedding-004 identifier compatible with current SDK
+    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
     return llm, embeddings
 
 llm, embeddings = get_models()
 
-# 4. Process Knowledge Base & Create Vector Store
+# 4. Process Knowledge Base & Create Vector Store safely
 if knowledge_text:
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=30)
-    docs = text_splitter.create_documents([knowledge_text])
-    vectorstore = InMemoryVectorStore.from_documents(docs, embeddings)
-    retriever = vectorstore.as_retriever()
-    st.sidebar.success("Knowledge Base Processed Successfully!")
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=30)
+        docs = text_splitter.create_documents([knowledge_text])
+        vectorstore = InMemoryVectorStore.from_documents(docs, embeddings)
+        retriever = vectorstore.as_retriever()
+        st.sidebar.success("Knowledge Base Processed Successfully!")
+    except Exception as e:
+        st.sidebar.error(f"Embedding Error: {e}")
 
 # 5. Define RAG Prompt Template
 rag_prompt = ChatPromptTemplate.from_template("""
@@ -55,16 +59,19 @@ question = st.text_input("Ask a question based on your pasted knowledge base:")
 
 if st.button("Get Answer") and question:
     with st.spinner("Searching knowledge base..."):
-        # Retrieve context matching the user question
-        retrieved_docs = retriever.invoke(question)
-        context_text = "\n".join([doc.page_content for doc in retrieved_docs])
-        
-        # Generate Answer
-        answer = chain.invoke({"context": context_text, "question": question})
-        
-        # Display Results
-        st.subheader("AI Answer:")
-        st.write(answer)
-        
-        with st.expander("View Retrieved Context Chunks"):
-            st.info(context_text)
+        try:
+            # Retrieve context matching the user question
+            retrieved_docs = retriever.invoke(question)
+            context_text = "\n".join([doc.page_content for doc in retrieved_docs])
+            
+            # Generate Answer
+            answer = chain.invoke({"context": context_text, "question": question})
+            
+            # Display Results
+            st.subheader("AI Answer:")
+            st.write(answer)
+            
+            with st.expander("View Retrieved Context Chunks"):
+                st.info(context_text)
+        except Exception as e:
+            st.error(f"Error generating answer: {e}")

@@ -9,37 +9,38 @@ from langchain_core.output_parsers import StrOutputParser
 st.set_page_config(page_title="RAG AI Assistant", page_icon="📚", layout="wide")
 st.title("📚 Custom Document Q&A Assistant")
 
-# 2. Sidebar for Document Knowledge Base
-st.sidebar.header("Knowledge Base Input")
-knowledge_text = st.sidebar.text_area(
-    "Paste custom document text here:",
-    height=250,
-    value="""Dinesh's Project Details:
+# 2. Sidebar for File Upload
+st.sidebar.header("Knowledge Base Upload")
+uploaded_file = st.sidebar.file_uploader("Upload a text document (.txt)", type=["txt"])
+
+# Use uploaded text or fallback to default project info if no file is uploaded
+if uploaded_file is not None:
+    knowledge_text = uploaded_file.read().decode("utf-8")
+    st.sidebar.success("File uploaded successfully!")
+else:
+    knowledge_text = """Dinesh's Project Details:
 Project Name: GenAI Assistant
-Current Phase: Phase 3 - Streamlit Web UI
+Current Phase: Phase 4 - Custom File Upload
 Target Launch Date: November 15, 2026
 Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB."""
-)
-
+    st.sidebar.info("Using default project notes. Upload a .txt file to customize.")
 
 # 3. Initialize Models
 @st.cache_resource
 def get_models():
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
-    # Updated to the current standard embedding model
     embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
     return llm, embeddings
 
 llm, embeddings = get_models()
 
-# 4. Process Knowledge Base & Create Vector Store safely
+# 4. Process Knowledge Base & Create Vector Store
 if knowledge_text:
     try:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=30)
         docs = text_splitter.create_documents([knowledge_text])
         vectorstore = InMemoryVectorStore.from_documents(docs, embeddings)
         retriever = vectorstore.as_retriever()
-        st.sidebar.success("Knowledge Base Processed Successfully!")
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
 
@@ -56,19 +57,16 @@ Question: {question}
 chain = rag_prompt | llm | StrOutputParser()
 
 # 6. Chat Interface
-question = st.text_input("Ask a question based on your pasted knowledge base:")
+question = st.text_input("Ask a question based on your document:")
 
 if st.button("Get Answer") and question:
-    with st.spinner("Searching knowledge base..."):
+    with st.spinner("Searching document..."):
         try:
-            # Retrieve context matching the user question
             retrieved_docs = retriever.invoke(question)
             context_text = "\n".join([doc.page_content for doc in retrieved_docs])
             
-            # Generate Answer
             answer = chain.invoke({"context": context_text, "question": question})
             
-            # Display Results
             st.subheader("AI Answer:")
             st.write(answer)
             

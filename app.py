@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_core.vectorstores import InMemoryVectorStore  # <--- Make sure this line exists
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser

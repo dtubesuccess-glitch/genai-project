@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import tempfile
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -12,6 +12,9 @@ from langchain_core.documents import Document
 # 1. Page Configuration
 st.set_page_config(page_title="RAG AI Assistant", page_icon="📚", layout="wide")
 st.title("📚 Custom Document Q&A Assistant")
+
+# Define persistent storage directory for ChromaDB
+CHROMA_PATH = "./chroma_db"
 
 # 2. Sidebar for Multi-File Upload
 st.sidebar.header("Knowledge Base Upload")
@@ -41,16 +44,16 @@ if uploaded_files:
             st.sidebar.error(f"Error loading {uploaded_file.name}: {e}")
         finally:
             if os.path.exists(tmp_path):
-                os.unlink(tmp_path) # Clean up temp file
+                os.unlink(tmp_path)
 
     st.sidebar.success(f"Loaded {len(uploaded_files)} file(s) successfully!")
 else:
     # Default fallback content when no files are uploaded
     docs = [Document(page_content="""Dinesh's Project Details:
 Project Name: GenAI Assistant
-Current Phase: Phase 6 - Multi-File Upload Support
+Current Phase: Phase 7 - Persistent Vector Storage (ChromaDB)
 Target Launch Date: November 15, 2026
-Main Tech Stack: Python, LangChain, Gemini API, Streamlit, Vector DB.""")]
+Main Tech Stack: Python, LangChain, Gemini API, Streamlit, ChromaDB Vector DB.""")]
     st.sidebar.info("Using default project notes. Upload PDF or TXT files to customize.")
 
 # 3. Initialize Models
@@ -62,19 +65,29 @@ def get_models():
 
 llm, embeddings = get_models()
 
-# 4. Process Knowledge Base & Create Vector Store
+# 4. Process Knowledge Base & Create/Load Persistent Vector Store
 if docs:
     try:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         split_docs = text_splitter.split_documents(docs)
-        vectorstore = InMemoryVectorStore.from_documents(split_docs, embeddings)
+        
+        # Initialize or append to persistent Chroma database
+        vectorstore = Chroma.from_documents(
+            documents=split_docs,
+            embedding=embeddings,
+            persist_directory=CHROMA_PATH
+        )
         retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
 
 # 5. Define RAG Prompt Template
 rag_prompt = ChatPromptTemplate.from_template("""
-Answer the user's question using ONLY the provided context below.
+You are an AI assistant helping with document Q&A.
+Use ONLY the following retrieved context to answer the user's question accurately.
+
+If the context does not contain sufficient information to answer, state:
+"The uploaded documents do not contain enough information to answer this question."
 
 Context:
 {context}
@@ -85,13 +98,13 @@ Question: {question}
 chain = rag_prompt | llm | StrOutputParser()
 
 # 6. Chat Interface
-question = st.text_input("Ask a question across all uploaded documents:")
+question = st.text_input("Ask a question across your vector store knowledge base:")
 
 if st.button("Get Answer") and question:
-    with st.spinner("Searching documents..."):
+    with st.spinner("Searching persistent knowledge base..."):
         try:
             retrieved_docs = retriever.invoke(question)
-            context_text = "\n".join([doc.page_content for doc in retrieved_docs])
+            context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
             
             answer = chain.invoke({"context": context_text, "question": question})
             

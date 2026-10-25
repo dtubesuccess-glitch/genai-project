@@ -68,7 +68,7 @@ if docs:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         split_docs = text_splitter.split_documents(docs)
         vectorstore = InMemoryVectorStore.from_documents(split_docs, embeddings)
-        retriever = vectorstore.as_retriever()
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
 

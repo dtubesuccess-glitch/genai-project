@@ -71,20 +71,32 @@ def get_models():
 
 llm, embeddings = get_models()
 
+
 # 4. Process Knowledge Base & Vector Store
 if docs:
     try:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         split_docs = text_splitter.split_documents(docs)
         
-        vectorstore = Chroma.from_documents(
-            documents=split_docs,
-            embedding=embeddings,
-            persist_directory=CHROMA_PATH
-        )
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+        # Guard: Check that split_docs is non-empty before passing to Chroma
+        if split_docs and len(split_docs) > 0:
+            vectorstore = Chroma.from_documents(
+                documents=split_docs,
+                embedding=embeddings,
+                persist_directory=CHROMA_PATH
+            )
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+        else:
+            st.sidebar.warning("Uploaded document yielded no readable text content.")
+            # Fallback to loading existing persisted Chroma directory if available
+            vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
+else:
+    # If no new docs uploaded, read directly from persisted Chroma database
+    vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
 # 5. Define Conversational RAG Prompt
 rag_prompt = ChatPromptTemplate.from_messages([

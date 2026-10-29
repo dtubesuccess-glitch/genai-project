@@ -99,26 +99,23 @@ def get_models():
 llm, embeddings = get_models()
 
 # 4. Process Knowledge Base & Vector Store
+# 4. Process Knowledge Base & Vector Store (In-Memory persistent cache to prevent read-only disk errors)
+@st.cache_resource
+def get_vectorstore(docs_hash):
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    split_docs = text_splitter.split_documents(docs)
+    # Using InMemoryVectorStore prevents SQLite/Chroma file-locking & readonly disk crashes on Streamlit Cloud
+    vectorstore = InMemoryVectorStore.from_documents(split_docs, embeddings)
+    return vectorstore
+
 if docs:
     try:
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        split_docs = text_splitter.split_documents(docs)
-        
-        if split_docs and len(split_docs) > 0:
-            vectorstore = Chroma.from_documents(
-                documents=split_docs,
-                embedding=embeddings,
-                persist_directory=CHROMA_PATH
-            )
-            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
-        else:
-            vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
-            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+        # Create a simple hash based on document lengths and contents to cache efficiently
+        docs_hash = sum(len(d.page_content) for d in docs)
+        vectorstore = get_vectorstore(docs_hash)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
-else:
-    vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
 # 5. Define Conversational RAG Prompt
 rag_prompt = ChatPromptTemplate.from_messages([

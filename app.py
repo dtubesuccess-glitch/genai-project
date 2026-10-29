@@ -18,7 +18,8 @@ from langchain_core.documents import Document
 st.set_page_config(page_title="RAG Conversational Assistant", page_icon="💬", layout="wide")
 st.title("💬 Conversational RAG Assistant with Source Citations")
 
-CHROMA_PATH = "./chroma_db"
+
+CHROMA_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 # 2. Sidebar Controls & File Upload
 st.sidebar.header("Database & Session Controls")

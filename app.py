@@ -4,6 +4,7 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 import streamlit as st
 import os
+import shutil
 import tempfile
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
@@ -15,22 +16,36 @@ from langchain_core.documents import Document
 
 # 1. Page Configuration
 st.set_page_config(page_title="RAG Conversational Assistant", page_icon="💬", layout="wide")
-st.title("💬 Conversational RAG Assistant")
+st.title("💬 Conversational RAG Assistant with Source Citations")
 
 CHROMA_PATH = "./chroma_db"
 
-# 2. Sidebar Management
+# 2. Sidebar Controls & File Upload
+st.sidebar.header("Database & Session Controls")
+
+# Clear Chat History Button
+if st.sidebar.button("🗑️ Clear Chat History"):
+    st.session_state.messages = []
+    st.sidebar.success("Chat history cleared!")
+
+# Reset Vector Database Button
+if st.sidebar.button("🔥 Reset Vector Database"):
+    if os.path.exists(CHROMA_PATH):
+        try:
+            shutil.rmtree(CHROMA_PATH)
+            st.cache_resource.clear()
+            st.sidebar.success("Vector database wiped successfully!")
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"Error resetting database: {e}")
+
+st.sidebar.divider()
 st.sidebar.header("Knowledge Base Upload")
 uploaded_files = st.sidebar.file_uploader(
     "Upload documents (.txt or .pdf)", 
     type=["txt", "pdf"], 
     accept_multiple_files=True
 )
-
-# Sidebar Clear History Button
-if st.sidebar.button("Clear Chat History"):
-    st.session_state.messages = []
-    st.sidebar.success("Chat history cleared!")
 
 docs = []
 
@@ -44,9 +59,17 @@ if uploaded_files:
         try:
             if uploaded_file.name.endswith(".pdf"):
                 loader = PyPDFLoader(tmp_path)
+                loaded_docs = loader.load()
+                # Attach original filename to document metadata
+                for d in loaded_docs:
+                    d.metadata["source"] = uploaded_file.name
+                docs.extend(loaded_docs)
             else:
                 loader = TextLoader(tmp_path)
-            docs.extend(loader.load())
+                loaded_docs = loader.load()
+                for d in loaded_docs:
+                    d.metadata["source"] = uploaded_file.name
+                docs.extend(loaded_docs)
         except Exception as e:
             st.sidebar.error(f"Error loading {uploaded_file.name}: {e}")
         finally:
@@ -55,11 +78,14 @@ if uploaded_files:
 
     st.sidebar.success(f"Loaded {len(uploaded_files)} file(s) successfully!")
 else:
-    docs = [Document(page_content="""Dinesh's Project Details:
+    docs = [Document(
+        page_content="""Dinesh's Project Details:
 Project Name: GenAI Assistant
-Current Phase: Phase 8 - Conversational Chat Memory
+Current Phase: Phase 9 - Production RAG App with Citations & Memory
 Target Launch Date: November 15, 2026
-Main Tech Stack: Python, LangChain, Gemini API, Streamlit, ChromaDB.""")]
+Main Tech Stack: Python, LangChain, Gemini API, Streamlit, ChromaDB.""",
+        metadata={"source": "default_project_notes.txt", "page": 1}
+    )]
     st.sidebar.info("Using default project notes. Upload PDF or TXT files to customize.")
 
 # 3. Initialize Models
@@ -71,14 +97,12 @@ def get_models():
 
 llm, embeddings = get_models()
 
-
 # 4. Process Knowledge Base & Vector Store
 if docs:
     try:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         split_docs = text_splitter.split_documents(docs)
         
-        # Guard: Check that split_docs is non-empty before passing to Chroma
         if split_docs and len(split_docs) > 0:
             vectorstore = Chroma.from_documents(
                 documents=split_docs,
@@ -87,14 +111,11 @@ if docs:
             )
             retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
         else:
-            st.sidebar.warning("Uploaded document yielded no readable text content.")
-            # Fallback to loading existing persisted Chroma directory if available
             vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
             retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     except Exception as e:
         st.sidebar.error(f"Embedding Error: {e}")
 else:
-    # If no new docs uploaded, read directly from persisted Chroma database
     vectorstore = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
@@ -115,24 +136,29 @@ chain = rag_prompt | llm | StrOutputParser()
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display prior chat history
+# Display prior chat history along with stored citation metadata
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if "citations" in message and message["citations"]:
+            with st.expander("📚 View Document Citations & Sources"):
+                for cit in message["citations"]:
+                    st.write(f"• **Source:** `{cit['source']}` | **Page:** `{cit['page']}`")
+                    st.caption(f"_{cit['snippet']}_")
 
 # Handle user input via chat bar
-if prompt := st.chat_input("Ask a follow-up question..."):
+if prompt := st.chat_input("Ask a question about your documents..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        with st.spinner("Searching documents & generating answer..."):
             try:
                 retrieved_docs = retriever.invoke(prompt)
                 context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
                 
-                # Format session state messages for LangChain prompt
+                # Format session history
                 history_tuples = [
                     (m["role"], m["content"]) for m in st.session_state.messages[:-1]
                 ]
@@ -143,7 +169,33 @@ if prompt := st.chat_input("Ask a follow-up question..."):
                     "question": prompt
                 })
                 
+                # Parse unique citations and chunk metadata
+                citations = []
+                for doc in retrieved_docs:
+                    source_name = doc.metadata.get("source", "Unknown Document")
+                    page_num = doc.metadata.get("page", 1)
+                    if isinstance(page_num, int):
+                        page_num = page_num + 1  # 0-indexed to 1-indexed conversion
+                    
+                    citations.append({
+                        "source": source_name,
+                        "page": page_num,
+                        "snippet": doc.page_content[:150] + "..."
+                    })
+
                 st.markdown(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+                
+                if citations:
+                    with st.expander("📚 View Document Citations & Sources"):
+                        for cit in citations:
+                            st.write(f"• **Source:** `{cit['source']}` | **Page:** `{cit['page']}`")
+                            st.caption(f"_{cit['snippet']}_")
+
+                # Store assistant response and citations in session state
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": answer,
+                    "citations": citations
+                })
             except Exception as e:
                 st.error(f"Error generating answer: {e}")

@@ -14,6 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 
 # 1. Page Configuration
 st.set_page_config(page_title="RAG Conversational Assistant", page_icon="💬", layout="wide")
@@ -24,6 +25,39 @@ CHROMA_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 # 2. Sidebar Controls & File Upload
 st.sidebar.header("Database & Session Controls")
+
+# Sidebar Persona Customization
+st.sidebar.divider()
+st.sidebar.subheader("🤖 AI Persona Settings")
+persona_option = st.sidebar.selectbox(
+    "Choose AI Tone/Role",
+    [
+        "Professional & Concise Analyst",
+        "Detailed Academic Researcher",
+        "Friendly & Helpful Assistant"
+    ]
+)
+# Sidebar Retrieval Settings
+st.sidebar.divider()
+st.sidebar.subheader("⚙️ Retrieval Settings")
+k_chunks = st.sidebar.slider(
+    "Retrieved Context Chunks (k)", 
+    min_value=2, 
+    max_value=10, 
+    value=5, 
+    help="Number of relevant document chunks retrieved per query."
+)
+
+# Define system prompts based on selection
+if persona_option == "Professional & Concise Analyst":
+    system_prompt_text = "You are an expert professional analyst. Provide concise, direct, data-driven answers based strictly on the provided context."
+elif persona_option == "Detailed Academic Researcher":
+    system_prompt_text = "You are a thorough academic researcher. Provide detailed, well-structured explanations with precise references to the source material."
+else:
+    system_prompt_text = "You are a friendly and helpful assistant. Explain concepts clearly and warmly using the provided documents."
+
+# Update your retriever definition to use the sidebar slider value
+retriever = vectorstore.as_retriever(search_kwargs={"k": k_chunks})
 
 # Clear Chat History Button
 if st.sidebar.button("🗑️ Clear Chat History"):
@@ -43,13 +77,16 @@ if st.sidebar.button("🔥 Reset Vector Database"):
 
 st.sidebar.divider()
 st.sidebar.header("Knowledge Base Upload")
+
 uploaded_files = st.sidebar.file_uploader(
-    "Upload documents (.txt or .pdf)", 
-    type=["txt", "pdf"], 
+    "Upload documents (.txt, .pdf, or .docx)", 
+    type=["txt", "pdf", "docx"], 
     accept_multiple_files=True
 )
 
 docs = []
+
+# new Update
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
@@ -59,19 +96,19 @@ if uploaded_files:
             tmp_path = tmp_file.name
 
         try:
+            # Select the correct loader based on file extension
             if uploaded_file.name.endswith(".pdf"):
                 loader = PyPDFLoader(tmp_path)
-                loaded_docs = loader.load()
-                # Attach original filename to document metadata
-                for d in loaded_docs:
-                    d.metadata["source"] = uploaded_file.name
-                docs.extend(loaded_docs)
+            elif uploaded_file.name.endswith(".docx"):
+                loader = Docx2txtLoader(tmp_path)
             else:
                 loader = TextLoader(tmp_path)
-                loaded_docs = loader.load()
-                for d in loaded_docs:
-                    d.metadata["source"] = uploaded_file.name
-                docs.extend(loaded_docs)
+                
+            loaded_docs = loader.load()
+            for d in loaded_docs:
+                d.metadata["source"] = uploaded_file.name
+            docs.extend(loaded_docs)
+            
         except Exception as e:
             st.sidebar.error(f"Error loading {uploaded_file.name}: {e}")
         finally:
@@ -88,7 +125,8 @@ Target Launch Date: November 15, 2026
 Main Tech Stack: Python, LangChain, Gemini API, Streamlit, ChromaDB.""",
         metadata={"source": "default_project_notes.txt", "page": 1}
     )]
-    st.sidebar.info("Using default project notes. Upload PDF or TXT files to customize.")
+    st.sidebar.info("Using default project notes. Upload PDF, DOCX, or TXT files to customize.")
+
 
 # 3. Initialize Models
 @st.cache_resource
